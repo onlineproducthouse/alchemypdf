@@ -1,0 +1,52 @@
+services:
+  cache:
+    restart: "always"
+    image: "${IMAGE_REGISTRY_BASE_URL}/redis:latest"
+    ports:
+      - "${REDIS_PORT}:${REDIS_PORT}"
+
+  pg:
+    image: "${IMAGE_REGISTRY_BASE_URL}/postgis/postgis:14-3.2"
+    restart: "always"
+    ports:
+      - "${DB_PORT}:${DB_PORT}"
+    healthcheck:
+      test: "pg_isready --username=${DB_USERNAME} && psql --username=${DB_USERNAME} --list"
+      timeout: 10s
+      retries: 20
+    environment:
+      POSTGRES_USER: "${DB_USERNAME}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD}"
+
+  db:
+    network_mode: "host"
+    depends_on:
+      pg:
+        condition: service_healthy
+    image: "${IMAGE_REGISTRY_BASE_URL}/alchemypdf.db:latest"
+    env_file:
+      - .env
+
+  api:
+    restart: "always"
+    depends_on:
+      pg:
+        condition: service_healthy
+    image: "${IMAGE_REGISTRY_BASE_URL}/alchemypdf.api:latest"
+    ports:
+      - "${ALCHEMYPDF_API_PORT}:${ALCHEMYPDF_API_PORT}"
+      # - "6789:6789"
+    env_file:
+      - .env
+    environment:
+      DB_HOST: pg
+      REDIS_HOST: cache
+
+  proc:
+    restart: "always"
+    image: "${IMAGE_REGISTRY_BASE_URL}/alchemypdf.proc:latest"
+    env_file:
+      - .env
+    environment:
+      API_HOST: 0.0.0.0
+      ALCHEMYPDF_API_HOST: api
